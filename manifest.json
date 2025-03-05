@@ -12,7 +12,7 @@
   "launch_handler": {
     "client_mode": "auto"
   },
-  
+
   "icons": [
     {
       "src": "/icons/icon-192x192.png",
@@ -23,6 +23,19 @@
       "src": "/icons/icon-512x512.png",
       "sizes": "512x512",
       "type": "image/png"
+    }
+  ],
+
+  "screenshots": [
+    {
+      "src": "/screenshots/screenshot1.png",
+      "type": "image/png",
+      "sizes": "1080x1920"
+    },
+    {
+      "src": "/screenshots/screenshot2.png",
+      "type": "image/png",
+      "sizes": "1080x1920"
     }
   ]
 }
