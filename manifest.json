@@ -2,6 +2,7 @@
   "name": "Conversor PDF",
   "short_name": "PDFConverter",
   "description": "Convierte cualquier archivo a PDF fácilmente",
+  "id": "/",
   "start_url": "/index.html",
   "display": "standalone",
   "background_color": "#ffffff",
