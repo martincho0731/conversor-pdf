@@ -1,104 +1,197 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Convertir a PDF</title>
-    <link rel="manifest" href="manifest.json">
-
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Convertir a PDF</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
-        <h1>Sube tu archivo para convertirlo a PDF</h1>
-        <input type="file" id="fileInput" accept=".txt,.docx,.jpg,.png,.pdf">
-        <button id="convertBtn">Convertir a PDF</button>
-        <div id="preview"></div>
-        <a id="downloadLink" style="display:none;">Descargar PDF</a>
-    </div>
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.16.0/pdf-lib.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js"></script>
-    <script>
-        document.getElementById("convertBtn").addEventListener("click", async function() {
-            const fileInput = document.getElementById("fileInput");
-            if (!fileInput.files.length) {
-                alert("Por favor, selecciona un archivo.");
-                return;
-            }
-            const file = fileInput.files[0];
-            const fileType = file.type;
-            const pdfDoc = await PDFLib.PDFDocument.create();
 
-            if (fileType.includes("text") || file.name.endsWith(".txt")) {
-                const reader = new FileReader();
-                reader.onload = async function(event) {
-                    const text = event.target.result;
-                    document.getElementById("preview").textContent = text;
-                    await addTextToPDF(pdfDoc, text);
-                };
-                reader.readAsText(file, "UTF-8");
-            } else if (fileType.includes("image")) {
-                const reader = new FileReader();
-                reader.onload = async function(event) {
-                    const imageBytes = new Uint8Array(event.target.result);
-                    await addImageToPDF(pdfDoc, imageBytes, fileType);
-                };
-                reader.readAsArrayBuffer(file);
-            } else if (file.name.endsWith(".docx")) {
-                const reader = new FileReader();
-                reader.onload = async function(event) {
-                    const docText = await mammoth.extractRawText({ arrayBuffer: event.target.result });
-                    document.getElementById("preview").textContent = docText.value;
-                    await addTextToPDF(pdfDoc, docText.value);
-                };
-                reader.readAsArrayBuffer(file);
-            } else {
-                alert("Formato no soportado.");
-                return;
-            }
-        });
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("service-worker.js")
+        .then(() => console.log("Service Worker registrado correctamente."))
+        .catch(error => console.log("Error al registrar Service Worker:", error));
+    }
+  </script>
 
-        async function addTextToPDF(pdfDoc, text) {
-            const lines = text.split("\n");
-            const maxLinesPerPage = 40;
-            let page;
-            let y = 750;
-            
-            for (let i = 0; i < lines.length; i++) {
-                if (i % maxLinesPerPage === 0) {
-                    page = pdfDoc.addPage([600, 800]);
-                    y = 750;
-                }
-                page.drawText(lines[i], { x: 50, y, size: 12, font: await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica) });
-                y -= 20;
+  <div class="container">
+    <h1>Sube tu archivo para convertirlo a PDF</h1>
+    <input type="file" id="fileInput" accept=".txt,.docx,.jpg,.png">
+    <button id="convertBtn">Convertir a PDF</button>
+  </div>
+
+  <!-- Cargamos pdf-lib y mammoth -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.16.0/pdf-lib.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js"></script>
+
+  <script>
+    // Referencias a elementos HTML
+    const fileInput = document.getElementById('fileInput');
+    const convertBtn = document.getElementById('convertBtn');
+
+    // Evento principal al hacer clic
+    convertBtn.addEventListener('click', async () => {
+      if (!fileInput.files.length) {
+        alert('Selecciona un archivo primero.');
+        return;
+      }
+
+      const file = fileInput.files[0];
+      const pdfDoc = await PDFLib.PDFDocument.create();
+      const reader = new FileReader();
+
+      reader.onload = async (event) => {
+        if (file.type.includes('text') || file.name.endsWith('.txt')) {
+          await addTextToPDF(pdfDoc, event.target.result);
+        } else if (file.type.includes('image')) {
+          const imageBytes = new Uint8Array(event.target.result);
+          await addImageToPDF(pdfDoc, imageBytes, file.type);
+        } else if (file.name.endsWith('.docx')) {
+          const docText = await mammoth.extractRawText({ arrayBuffer: event.target.result });
+          await addTextToPDF(pdfDoc, docText.value);
+        } else {
+          alert('Formato no soportado.');
+          return;
+        }
+
+        const pdfBytes = await pdfDoc.save();
+        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'documento.pdf';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      };
+
+      // Iniciar la lectura del archivo
+      if (file.type.includes('text') || file.name.endsWith('.txt') || file.name.endsWith('.docx')) {
+        if (file.name.endsWith('.docx')) {
+          reader.readAsArrayBuffer(file);
+        } else {
+          reader.readAsText(file, 'UTF-8');
+        }
+      } else {
+        reader.readAsArrayBuffer(file);
+      }
+    });
+
+    // Añade texto con saltos de página y respeta párrafos
+    async function addTextToPDF(pdfDoc, text) {
+      const pageWidth = 595;  // A4
+      const pageHeight = 842; // A4
+      const margin = 50;
+      const fontSize = 12;
+      const lineHeight = fontSize + 4;
+      const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+
+      // Separa en párrafos donde haya línea(s) en blanco
+      const paragraphs = text.split(/\n\s*\n+/);
+
+      // Función para trazar un párrafo con word-wrap
+      const drawParagraph = (paragraph, pageObj) => {
+        // Separamos el párrafo en palabras
+        const words = paragraph.split(/\s+/);
+        let line = '';
+
+        for (let w of words) {
+          const testLine = line + w + ' ';
+          const textWidth = font.widthOfTextAtSize(testLine, fontSize);
+
+          // Si se pasa del ancho, imprimimos la línea anterior
+          if (textWidth > (pageWidth - margin * 2)) {
+            pageObj.drawText(line, {
+              x: margin,
+              y: y,
+              size: fontSize,
+              font: font
+            });
+            line = w + ' ';
+            y -= lineHeight;
+
+            // Si no cabe más en la página, creamos otra
+            if (y <= margin) {
+              pageObj = pdfDoc.addPage([pageWidth, pageHeight]);
+              y = pageHeight - margin;
             }
-            await saveAndDownloadPDF(pdfDoc);
+          } else {
+            line = testLine;
+          }
         }
-        
-        async function addImageToPDF(pdfDoc, imageBytes, fileType) {
-            let image;
-            if (fileType.includes("png")) {
-                image = await pdfDoc.embedPng(imageBytes);
-            } else {
-                image = await pdfDoc.embedJpg(imageBytes);
-            }
-            const page = pdfDoc.addPage([600, 800]);
-            const { width, height } = image.scale(0.5);
-            page.drawImage(image, { x: 50, y: 400, width, height });
-            await saveAndDownloadPDF(pdfDoc);
+
+        // Dibuja la última línea pendiente
+        if (line) {
+          if (y <= margin) {
+            pageObj = pdfDoc.addPage([pageWidth, pageHeight]);
+            y = pageHeight - margin;
+          }
+          pageObj.drawText(line, {
+            x: margin,
+            y: y,
+            size: fontSize,
+            font: font
+          });
+          y -= lineHeight;
         }
-        
-        async function saveAndDownloadPDF(pdfDoc) {
-            const pdfBytes = await pdfDoc.save();
-            const blob = new Blob([pdfBytes], { type: "application/pdf" });
-            const url = URL.createObjectURL(blob);
-            const downloadLink = document.getElementById("downloadLink");
-            downloadLink.href = url;
-            downloadLink.download = "documento.pdf";
-            downloadLink.style.display = "block";
-            downloadLink.innerText = "Descargar PDF";
+        return pageObj;
+      };
+
+      // Iniciamos con la primera página
+      let page = pdfDoc.addPage([pageWidth, pageHeight]);
+      let y = pageHeight - margin;
+
+      for (let i = 0; i < paragraphs.length; i++) {
+        const paragraph = paragraphs[i].trim();
+        if (!paragraph) {
+          // Es un espacio de párrafo vacío, bajamos una línea extra
+          y -= lineHeight;
+          // Si no queda espacio, siguiente página
+          if (y <= margin) {
+            page = pdfDoc.addPage([pageWidth, pageHeight]);
+            y = pageHeight - margin;
+          }
+          continue;
         }
-    </script>
+
+        // Dibujamos el párrafo con wrap
+        page = drawParagraph(paragraph, page);
+
+        // Añadimos espacio extra entre párrafos
+        y -= lineHeight;
+        if (y <= margin) {
+          page = pdfDoc.addPage([pageWidth, pageHeight]);
+          y = pageHeight - margin;
+        }
+      }
+    }
+
+    // Añade una imagen escalada y centrada en su propia página
+    async function addImageToPDF(pdfDoc, imageBytes, fileType) {
+      const image = fileType.includes('png')
+        ? await pdfDoc.embedPng(imageBytes)
+        : await pdfDoc.embedJpg(imageBytes);
+
+      const pageWidth = 595;
+      const pageHeight = 842;
+      const scale = Math.min(pageWidth / image.width, pageHeight / image.height);
+
+      const imgWidth = image.width * scale;
+      const imgHeight = image.height * scale;
+
+      const page = pdfDoc.addPage([pageWidth, pageHeight]);
+      page.drawImage(image, {
+        x: (pageWidth - imgWidth) / 2,
+        y: (pageHeight - imgHeight) / 2,
+        width: imgWidth,
+        height: imgHeight,
+      });
+    }
+  </script>
 </body>
 </html>
